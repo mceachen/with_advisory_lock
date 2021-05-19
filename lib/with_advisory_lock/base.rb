@@ -22,6 +22,8 @@ module WithAdvisoryLock
     attr_reader :connection, :lock_name, :timeout_seconds, :shared, :transaction
 
     def initialize(connection, lock_name, options)
+      Rails.logger.info "with_advisory_lock: object creation"
+      @obj_created_at = Time.now
       options = { timeout_seconds: options } unless options.respond_to?(:fetch)
       options.assert_valid_keys :timeout_seconds, :shared, :transaction
 
@@ -52,6 +54,7 @@ module WithAdvisoryLock
 
     def with_advisory_lock_if_needed(&block)
       if already_locked?
+        Rails.logger.info "with_advisory_lock: no waiting YAY ** #{Time.now - @obj_created_at}"
         Result.new(true, yield)
       elsif timeout_seconds == 0
         yield_with_lock(&block)
@@ -82,13 +85,16 @@ module WithAdvisoryLock
     end
 
     def yield_with_lock
+      Rails.logger.info "with_advisory_lock: will wait for lock ** #{Time.now - @obj_created_at}"
       if try_lock
+        Rails.logger.info "with_advisory_lock: obtained lock, executing block ** #{Time.now - @obj_created_at}"
         begin
           lock_stack.push(lock_stack_item)
           result = block_given? ? yield : nil
           Result.new(true, result)
         ensure
           lock_stack.pop
+           Rails.logger.info "with_advisory_lock: releasing lock ** #{Time.now - @obj_created_at}"
           release_lock
         end
       else
